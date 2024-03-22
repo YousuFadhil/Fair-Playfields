@@ -1,12 +1,19 @@
 <?php
 $title = 'Create Match';
 require_once 'header.php';
-
-// Include the database connection file
-require_once 'connect.php';
-
+require_once 'auth.php'; // Include the authentication logic
+require_once 'connect.php'; // Include the database connection file
+// Authenticate the user
+$user = authenticate();
+// Check if user is authenticated
+if (!$user) {
+    // Handle unauthorized access
+    echo "Unauthorized access.";
+    exit();
+}
+$user_id=$user['user_id'];
 // Define variables to store user inputs
-$match_name = $match_date = $time_from = $time_to = $min_players = $max_players = $match_location = '';
+$match_name = $match_date = $start_time = $end_time = $min_players = $max_players = $match_location = '';
 $error = '';
 
 // Check if the form is submitted
@@ -14,33 +21,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Validate and sanitize user inputs
     $match_name = mysqli_real_escape_string($conn, $_POST['match_name']);
     $match_date = mysqli_real_escape_string($conn, $_POST['match_date']);
-    $time_from = mysqli_real_escape_string($conn, $_POST['time_from']);
-    $time_to = mysqli_real_escape_string($conn, $_POST['time_to']);
+    $start_time = mysqli_real_escape_string($conn, $_POST['start_time']);
+    $end_time = mysqli_real_escape_string($conn, $_POST['end_time']);
     $min_players = mysqli_real_escape_string($conn, $_POST['min_players']);
     $max_players = mysqli_real_escape_string($conn, $_POST['max_players']);
     $match_location = mysqli_real_escape_string($conn, $_POST['match_location']);
+    $match_status = mysqli_real_escape_string($conn, $_POST['match_status']); // Added for match status
 
-    // Insert data into tblmatch table
-    $sql = "INSERT INTO tblmatch (uid, mlid, match_name, match_date, time_from, time_to, min_players, max_players, mstatus)
-    VALUES ('5','5','$match_name', '$match_date', '$time_from', '$time_to', '$min_players', '$max_players', 'Active')";
+    // Retrieve match location ID
+    $locationQuery = "SELECT match_location_id FROM match_location WHERE venue_name = '$match_location'";
+    $locationResult = mysqli_query($conn, $locationQuery);
+    if(mysqli_num_rows($locationResult) > 0) {
+        $locationRow = mysqli_fetch_assoc($locationResult);
+        $match_location_id = $locationRow['match_location_id'];
+    } else {
+        // Handle error if match location is not found
+        $error = "Match location not found.";
+    }
 
-// Execute the query with error handling
-mysqli_query($conn, $sql) or die('Error in query: ' . $sql . ' ' . mysqli_error($conn));
+    // Insert data into match table
+    if(empty($error)) {
+        $sql = "INSERT INTO `match` (user_id, match_location_id, match_name, match_date, start_time, end_time, min_players, max_players, match_status)
+        VALUES ('$user_id', '$match_location_id', '$match_name', '$match_date', '$start_time', '$end_time', '$min_players', '$max_players', '$match_status')";
 
-// Success message using JavaScript dialog
-echo '<script>
-    alert("Match created successfully");
-    window.location.href = "index.php"; // Redirect to the home page or another page
-  </script>';
+        // Execute the query with error handling
+        mysqli_query($conn, $sql) or die('Error in query: ' . $sql . ' ' . mysqli_error($conn));
 
+        // Success message using JavaScript dialog
+        echo '<script>
+                alert("Match created successfully");
+                window.location.href = "index.php"; // Redirect to the home page or another page
+              </script>';
+    }
 }
 
 // Fetch match locations from the database
-$locationQuery = "SELECT * FROM tblmatchlocation";
+$locationQuery = "SELECT * FROM match_location";
 $locationResult = mysqli_query($conn, $locationQuery);
 
-// Close the database connection
-mysqli_close($conn);
 ?>
 
 <div class="container">
@@ -52,11 +70,11 @@ mysqli_close($conn);
         <label for="date" class="form-label">Date:</label>
         <input type="date" id="date" name="match_date" class="form-control" required>
 
-        <label for="time-from" class="form-label">Time From:</label>
-        <input type="time" id="time-from" name="time_from" class="form-control" required>
+        <label for="start_time" class="form-label">Start Time:</label>
+        <input type="time" id="start_time" name="start_time" class="form-control" required>
 
-        <label for="time-to" class="form-label">Time To:</label>
-        <input type="time" id="time-to" name="time_to" class="form-control" required>
+        <label for="end_time" class="form-label">End Time:</label>
+        <input type="time" id="end_time" name="end_time" class="form-control" required>
 
         <label for="min-players" class="form-label">Minimum Number of Players:</label>
         <input type="number" id="min-players" name="min_players" class="form-control" required>
@@ -69,13 +87,21 @@ mysqli_close($conn);
             <?php
             // Display match locations in the dropdown list
             while ($locationRow = mysqli_fetch_assoc($locationResult)) {
-                echo "<option value='{$locationRow['name']}'>{$locationRow['name']}</option>";
+                echo "<option value='{$locationRow['venue_name']}'>{$locationRow['venue_name']}</option>";
             }
 
             // Free the result set
             mysqli_free_result($locationResult);
             ?>
         </select>
+
+        <label for="status" class="form-label">Match Status:</label> <!-- Added for match status -->
+        <div>
+            <input type="radio" id="active" name="match_status" value="Active" checked>
+            <label for="active">Active</label>
+            <input type="radio" id="cancelled" name="match_status" value="Cancelled">
+            <label for="cancelled">Cancelled</label>
+        </div>
 
         <div class="button-container">
             <input type="submit" value="Create Match" class="btn btn-primary">
